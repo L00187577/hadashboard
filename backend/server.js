@@ -222,6 +222,24 @@ app.patch('/api/servers/:id', async (req, res) => {
   res.json(row[0] || {});
 });
 
+/** Proxy endpoint (Semaphore API) **/
+app.post('/api/project/1/environment', async (req, res) => {
+  try {
+    const response = await fetch('http://192.168.0.43:3000/api/project/1/environment', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer vtdgwvof4ifaamne_prhtlwvnzv6brf4nrapw0u61ly=',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(req.body),
+    });
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Proxy error', details: err.message });
+  }
+});
+
 /* ========= Start ========= */
 const port = process.env.PORT || 3001;
 app.listen(port, () => console.log(`API listening on :${port}`));

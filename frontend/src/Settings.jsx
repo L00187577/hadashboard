@@ -12,6 +12,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [err, setErr] = useState("");
+  
 
   const [form, setForm] = useState({
     credential_name: "", api_user: "", api_token: "", api_url: "", api_token_id: ""
@@ -23,6 +24,7 @@ export default function Settings() {
 
   const submit = async (e) => {
     e.preventDefault(); setErr("");
+    setLaunching(true);
     try {
       const created = await api.addCred(form);
       setRows(s => [created, ...s]);
