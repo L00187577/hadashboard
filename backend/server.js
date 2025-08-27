@@ -293,7 +293,7 @@ function buildProxmoxPlaybookYAML({
             api_token_secret: "{{ lookup('env', 'PROXMOX_API_TOKEN') }}",
             api_token_id: "{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}",
             api_host: "{{ lookup('env', 'PROXMOX_API_URL') }}",
-            node: node,
+            node,
             clone: "{{ template_name }}",
             name: "{{ new_vm_name }}",
             cores: "{{ vm_cores }}",
@@ -309,7 +309,7 @@ function buildProxmoxPlaybookYAML({
             api_token_secret: "{{ lookup('env', 'PROXMOX_API_TOKEN') }}",
             api_token_id: "{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}",
             api_host: "{{ lookup('env', 'PROXMOX_API_URL') }}",
-            node: node,
+            node,
             name: "{{ new_vm_name }}",
             cores: "{{ vm_cores }}",
             memory: "{{ vm_memory }}",
@@ -330,7 +330,7 @@ function buildProxmoxPlaybookYAML({
             api_token_secret: "{{ lookup('env', 'PROXMOX_API_TOKEN') }}",
             api_token_id: "{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}",
             api_host: "{{ lookup('env', 'PROXMOX_API_URL') }}",
-            node: node,
+            node,
             name: "{{ new_vm_name }}",
             state: 'started',
           },
@@ -339,7 +339,13 @@ function buildProxmoxPlaybookYAML({
     },
   ];
 
-  return yaml.dump(play, { noRefs: true, lineWidth: -1 });
+  // Force all string scalars to be DOUBLE-QUOTED
+  const yamlText = YAML.stringify(play, {
+    defaultStringType: 'QUOTE_DOUBLE',
+    simpleKeys: true,
+  });
+
+  return yamlText;
 }
 
 function savePlaybookYAML(new_vm_name, yamlText) {
