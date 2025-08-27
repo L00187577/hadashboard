@@ -6,7 +6,7 @@ const bcrypt = require('bcrypt');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
-const yaml = require('js-yaml');
+const YAML = require('js-yaml');
 
 const app = express();
 app.use(express.json());
@@ -340,7 +340,7 @@ function buildProxmoxPlaybookYAML({
   ];
 
   // Force all string scalars to be DOUBLE-QUOTED
-  const yamlText = yaml.stringify(play, {
+  const yamlText = YAML.stringify(play, {
     defaultStringType: 'QUOTE_DOUBLE',
     simpleKeys: true,
   });
