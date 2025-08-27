@@ -34,6 +34,15 @@ export default function Settings() {
     } catch (er) {
       setErr(er.message || "Failed");
     }
+
+    try {
+      const created = await api.addcredsem(form);
+      setRows(s => [created, ...s]);
+      setOpen(false);
+      setForm({ credential_name: "", api_user: "", api_token: "", api_url: "", api_token_id: "" });
+    } catch (er) {
+      setErr(er.message || "Failed");
+    }
   };
 
   return (

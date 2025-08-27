@@ -12,4 +12,8 @@ export const api = {
   addCred: (payload) =>
     fetch(`${BASE}/api/proxmox_creds`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(r => { if (!r.ok) throw new Error(`Cred failed ${r.status}`); return r.json(); }),
+   addcredsem: (payload) =>
+    fetch(`${BASE}/api/project/1/environment'`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      .then(r => { if (!r.ok) throw new Error(`Cred failed ${r.status}`); return r.json(); }), 
+      
 };
