@@ -277,8 +277,80 @@ app.post('/api/project/1/templates', async (req, res) => {
     });
 
     const data = await response.json();
+
+
+
+    /*
     res.status(response.status).json(data);
   } catch (err) {
+    res.status(500).json({ error: 'Proxy error', details: err.message });
+  }*/
+
+     if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+
+    const templateId = data.id;
+    if (!templateId) {
+      return res.status(500).json({ error: 'No template ID returned from Semaphore' });
+    }
+
+    // 2. Start task
+    const runResp = await fetch('http://192.168.0.43:3000/api/project/1/tasks', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer vtdgwvof4ifaamne_prhtlwvnzv6brf4nrapw0u61ly=',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ template_id: templateId, project_id: 1 }),
+    });
+
+    const runResult = await runResp.json();
+    if (!runResp.ok) {
+      return res.status(runResp.status).json(runResult);
+    }
+
+    const taskId = runResult.id;
+    if (!taskId) {
+      return res.status(500).json({ error: 'No task ID returned from Semaphore' });
+    }
+
+    // 3. Poll task until completion
+    async function pollTask() {
+      const taskResp = await fetch(`http://192.168.0.43:3000/api/project/1/tasks/${taskId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': 'Bearer vtdgwvof4ifaamne_prhtlwvnzv6brf4nrapw0u61ly=',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ task_id: taskId, project_id: 1 }),
+      });
+
+      const taskData = await taskResp.json();
+      const status = taskData.status;
+
+      console.log(`[Poll] Task ${taskId} status: ${status}`);
+
+      if (status === 'success' || status === 'error') {
+        return taskData;
+      }
+
+      // wait 3 seconds before next poll
+      await new Promise(r => setTimeout(r, 3000));
+      return pollTask();
+    }
+
+    const finalTask = await pollTask();
+
+    // 4. Return everything
+    res.status(200).json({
+      createdTemplate,
+      runResult,
+      finalTask,
+    });
+
+  } catch (err) {
+    console.error('[Proxy] templates-and-run error:', err);
     res.status(500).json({ error: 'Proxy error', details: err.message });
   }
 });
