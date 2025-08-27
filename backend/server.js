@@ -4,9 +4,18 @@ const mysql = require('mysql2/promise');
 const Joi = require('joi');
 const bcrypt = require('bcrypt');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
+const yaml = require('js-yaml');
 
 const app = express();
 app.use(express.json());
+const GEN_DIR = path.join(__dirname, 'generated', 'playbooks');
+fs.mkdirSync(GEN_DIR, { recursive: true });
+
+// static hosting so the client can download the yaml
+app.use('/generated', express.static(path.join(__dirname, 'generated')));
+
 
 /* ========= CORS (Express 5 safe) ========= */
 const allowedOrigins = new Set([
@@ -145,6 +154,21 @@ app.post('/api/servers', async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'Internal server error' });
   }
+
+    // === NEW: generate YAML from the form data ===
+    const yamlText = buildProxmoxPlaybookYAML({
+      template_name,
+      new_vm_name,
+      vm_memory,
+      vm_cores,
+      ci_user,
+      ci_password, // plaintext required in YAML to pass to cloud-init
+      ipconfig0,
+      node,
+    });
+
+    const { publicUrl, filename } = savePlaybookYAML(new_vm_name, yamlText);
+
 });
 
 /** Replicas */
@@ -239,6 +263,95 @@ app.post('/api/project/1/environment', async (req, res) => {
     res.status(500).json({ error: 'Proxy error', details: err.message });
   }
 });
+
+function buildProxmoxPlaybookYAML({
+  template_name = 'mysql02',
+  new_vm_name,
+  vm_memory,
+  vm_cores,
+  ci_user,
+  ci_password,
+  ipconfig0,
+  node = 'pve',
+}) {
+  const play = [
+    {
+      name: 'Create VM from template in Proxmox',
+      hosts: 'localhost',
+      gather_facts: false,
+      vars: {
+        template_name: String(template_name),
+        new_vm_name: String(new_vm_name),
+        vm_memory: Number(vm_memory),
+        vm_cores: Number(vm_cores),
+      },
+      tasks: [
+        {
+          name: 'Clone VM from template',
+          'community.general.proxmox_kvm': {
+            api_user: "{{ lookup('env', 'PROXMOX_API_USER') }}",
+            api_token_secret: "{{ lookup('env', 'PROXMOX_API_TOKEN') }}",
+            api_token_id: "{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}",
+            api_host: "{{ lookup('env', 'PROXMOX_API_URL') }}",
+            node: node,
+            clone: "{{ template_name }}",
+            name: "{{ new_vm_name }}",
+            cores: "{{ vm_cores }}",
+            memory: "{{ vm_memory }}",
+            state: 'present',
+            timeout: 300,
+          },
+        },
+        {
+          name: 'Set Cloud-Init network config',
+          'community.general.proxmox_kvm': {
+            api_user: "{{ lookup('env', 'PROXMOX_API_USER') }}",
+            api_token_secret: "{{ lookup('env', 'PROXMOX_API_TOKEN') }}",
+            api_token_id: "{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}",
+            api_host: "{{ lookup('env', 'PROXMOX_API_URL') }}",
+            node: node,
+            name: "{{ new_vm_name }}",
+            cores: "{{ vm_cores }}",
+            memory: "{{ vm_memory }}",
+            ciuser: String(ci_user),
+            cipassword: String(ci_password),
+            ipconfig: {
+              ipconfig0: String(ipconfig0),
+            },
+            update: true,
+            update_unsafe: true,
+            state: 'present',
+          },
+        },
+        {
+          name: 'Start the new VM',
+          'community.general.proxmox_kvm': {
+            api_user: "{{ lookup('env', 'PROXMOX_API_USER') }}",
+            api_token_secret: "{{ lookup('env', 'PROXMOX_API_TOKEN') }}",
+            api_token_id: "{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}",
+            api_host: "{{ lookup('env', 'PROXMOX_API_URL') }}",
+            node: node,
+            name: "{{ new_vm_name }}",
+            state: 'started',
+          },
+        },
+      ],
+    },
+  ];
+
+  return yaml.dump(play, { noRefs: true, lineWidth: -1 });
+}
+
+function savePlaybookYAML(new_vm_name, yamlText) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `${stamp}_${new_vm_name}.yml`;
+  const filePath = path.join(GEN_DIR, filename);
+  fs.writeFileSync(filePath, yamlText, 'utf8');
+  // public URL path (served by /generated static)
+  const publicUrl = `/generated/playbooks/${filename}`;
+  return { filePath, publicUrl, filename };
+}
+
 
 /* ========= Start ========= */
 const port = process.env.PORT || 3001;
