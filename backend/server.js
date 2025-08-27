@@ -103,7 +103,7 @@ app.post('/api/proxmox_creds', async (req, res) => {
 /** Servers (masters) */
 app.get('/api/servers', async (_req, res) => {
   const [rows] = await pool.query(
-    'SELECT id, new_vm_name, vm_memory, vm_cores, ci_user, ipconfig0, is_master, provider, status, ip, created_at FROM servers ORDER BY id DESC'
+    'SELECT id, new_vm_name, vm_memory, vm_cores, ci_user, ipconfig0, is_master, provider, created_at FROM servers ORDER BY id DESC'
   );
   res.json(rows);
 });
@@ -124,8 +124,8 @@ app.post('/api/servers', async (req, res) => {
 
   const sql = `
     INSERT INTO servers
-      (new_vm_name, vm_memory, vm_cores, ci_user, ci_password, mysql_password, ipconfig0, is_master, provider, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')
+      (new_vm_name, vm_memory, vm_cores, ci_user, ci_password, mysql_password, ipconfig0, is_master, provider)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   const params = [
     new_vm_name, vm_memory, vm_cores, ci_user,
@@ -135,7 +135,7 @@ app.post('/api/servers', async (req, res) => {
   try {
     const [result] = await pool.execute(sql, params);
     const [row] = await pool.query(
-      `SELECT id, new_vm_name, vm_memory, vm_cores, ci_user, ipconfig0, is_master, provider, status, ip, created_at
+      `SELECT id, new_vm_name, vm_memory, vm_cores, ci_user, ipconfig0, is_master, provider, created_at
        FROM servers WHERE id=?`,
       [result.insertId]
     );
@@ -171,8 +171,8 @@ app.post('/api/servers/:id/replica', async (req, res) => {
 
   const sql = `
     INSERT INTO servers
-      (new_vm_name, vm_memory, vm_cores, ci_user, ci_password, mysql_password, ipconfig0, is_master, provider, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')
+      (new_vm_name, vm_memory, vm_cores, ci_user, ci_password, mysql_password, ipconfig0, is_master, provider)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   const params = [
     value.new_vm_name, value.vm_memory, value.vm_cores,
@@ -183,7 +183,7 @@ app.post('/api/servers/:id/replica', async (req, res) => {
   try {
     const [result] = await pool.execute(sql, params);
     const [row] = await pool.query(
-      `SELECT id, new_vm_name, vm_memory, vm_cores, ci_user, ipconfig0, is_master, provider, status, ip, created_at
+      `SELECT id, new_vm_name, vm_memory, vm_cores, ci_user, ipconfig0, is_master, provider, created_at
        FROM servers WHERE id=?`,
       [result.insertId]
     );
