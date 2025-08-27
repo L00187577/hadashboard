@@ -246,7 +246,7 @@ app.patch('/api/servers/:id', async (req, res) => {
   res.json(row[0] || {});
 });
 
-/** Proxy endpoint (Semaphore API) **/
+/** Proxy endpoint (Semaphore API credentials) **/
 app.post('/api/project/1/environment', async (req, res) => {
   try {
     const response = await fetch('http://192.168.0.43:3000/api/project/1/environment', {
@@ -257,6 +257,25 @@ app.post('/api/project/1/environment', async (req, res) => {
       },
       body: JSON.stringify(req.body),
     });
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Proxy error', details: err.message });
+  }
+});
+
+/** Proxy endpoint (Semaphore API: create template) **/
+app.post('/api/project/1/templates', async (req, res) => {
+  try {
+    const response = await fetch('http://192.168.0.43:3000/api/project/1/templates', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer vtdgwvof4ifaamne_prhtlwvnzv6brf4nrapw0u61ly=',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(req.body),   // expects your template JSON
+    });
+
     const data = await response.json();
     res.status(response.status).json(data);
   } catch (err) {
@@ -341,8 +360,7 @@ function buildProxmoxPlaybookYAML(data) {
   return String(doc);
 }
 function savePlaybookYAML(new_vm_name, yamlText) {
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `${stamp}_${new_vm_name}.yml`;
+  const filename = `${new_vm_name}.yml`;
   const filePath = path.join(GEN_DIR, filename);
   fs.writeFileSync(filePath, yamlText, 'utf8');
   // public URL path (served by /generated static)

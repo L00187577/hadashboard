@@ -68,6 +68,24 @@ export default function Servers() {
     } finally {
       setCreating(false);
     }
+
+     const data = {
+                  project_id: 1,
+                  inventory_id: 1,
+                  repository_id: 1,
+                  environment_id: 2,
+                  name: pxForm.new_vm_name,
+                  playbook: "/root/jery/new/ha-platform-full/backend/generated/playbooks/" + pxForm.new_vm_name +".yml",
+                  app: "ansible"
+            };
+    
+        try {
+          const created = await api.addserversem(data);
+          setRows(s => [created, ...s]);
+          setOpen(false);
+        } catch (er) {
+          setError(er.message || "Failed");
+        }
   };
 
   const openReplica = (sv) => {
