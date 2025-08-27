@@ -157,14 +157,14 @@ app.post('/api/servers', async (req, res) => {
 
     // === NEW: generate YAML from the form data ===
     const yamlText = buildProxmoxPlaybookYAML({
-      template_name,
+      
       new_vm_name,
       vm_memory,
       vm_cores,
       ci_user,
       ci_password, // plaintext required in YAML to pass to cloud-init
       ipconfig0,
-      node,
+      
     });
 
     const { publicUrl, filename } = savePlaybookYAML(new_vm_name, yamlText);
