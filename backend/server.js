@@ -47,7 +47,7 @@ const credSchema = Joi.object({
   credential_name: Joi.string().max(255).required(),
   api_user: Joi.string().max(255).required(),
   api_token: Joi.string().max(255).required(),
-  api_url: Joi.string().uri().max(255).required(),
+  api_url: Joi.string().max(255).required(),
   api_token_id: Joi.string().max(255).required(),
 });
 
