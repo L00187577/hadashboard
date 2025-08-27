@@ -87,9 +87,13 @@ export default function Servers() {
            const result = await api.addserversem(data);
 
     console.log("Final result from semaphore:", result);
-    // you could check result.finalTask.status === "success" here
+     if (result.finalTask?.status === "success") {
+      setOpen(false); // close only if successful
+    } else {
+      setError("Deployment failed: " + (result.finalTask?.status || "unknown error"));
+    }
 
-    setOpen(false);
+    
   } catch (err) {
     setError(err.message || "Create failed");
   } finally {
