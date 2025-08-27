@@ -264,26 +264,17 @@ app.post('/api/project/1/environment', async (req, res) => {
   }
 });
 
-function buildProxmoxPlaybookYAML({
-  template_name = 'mysql02',
-  new_vm_name,
-  vm_memory,
-  vm_cores,
-  ci_user,
-  ci_password,
-  ipconfig0,
-  node = 'pve',
-}) {
+function buildProxmoxPlaybookYAML(data) {
   const play = [
     {
       name: 'Create VM from template in Proxmox',
       hosts: 'localhost',
       gather_facts: false,
       vars: {
-        template_name: String(template_name),
-        new_vm_name: String(new_vm_name),
-        vm_memory: Number(vm_memory),
-        vm_cores: Number(vm_cores),
+        template_name: String('mysql02'),
+        new_vm_name: String(data.new_vm_name),
+        vm_memory: Number(data.vm_memory),
+        vm_cores: Number(data.vm_cores),
       },
       tasks: [
         {
@@ -293,7 +284,7 @@ function buildProxmoxPlaybookYAML({
             api_token_secret: "{{ lookup('env', 'PROXMOX_API_TOKEN') }}",
             api_token_id: "{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}",
             api_host: "{{ lookup('env', 'PROXMOX_API_URL') }}",
-            node,
+            node: data.node || 'pve',
             clone: "{{ template_name }}",
             name: "{{ new_vm_name }}",
             cores: "{{ vm_cores }}",
@@ -309,14 +300,14 @@ function buildProxmoxPlaybookYAML({
             api_token_secret: "{{ lookup('env', 'PROXMOX_API_TOKEN') }}",
             api_token_id: "{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}",
             api_host: "{{ lookup('env', 'PROXMOX_API_URL') }}",
-            node,
+            node: data.node || 'pve',
             name: "{{ new_vm_name }}",
             cores: "{{ vm_cores }}",
             memory: "{{ vm_memory }}",
-            ciuser: String(ci_user),
-            cipassword: String(ci_password),
+            ciuser: String(data.ci_user),
+            cipassword: String(data.ci_password),
             ipconfig: {
-              ipconfig0: String(ipconfig0),
+              ipconfig0: String(data.ipconfig0),
             },
             update: true,
             update_unsafe: true,
@@ -330,7 +321,7 @@ function buildProxmoxPlaybookYAML({
             api_token_secret: "{{ lookup('env', 'PROXMOX_API_TOKEN') }}",
             api_token_id: "{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}",
             api_host: "{{ lookup('env', 'PROXMOX_API_URL') }}",
-            node,
+            node: data.node || 'pve',
             name: "{{ new_vm_name }}",
             state: 'started',
           },
@@ -339,15 +330,16 @@ function buildProxmoxPlaybookYAML({
     },
   ];
 
-  // Force all string scalars to be DOUBLE-QUOTED
-  const yamlText = YAML.stringify(play, {
-    defaultStringType: 'QUOTE_DOUBLE',
-    simpleKeys: true,
+  // Build as YAML document
+  const doc = new YAML.Document(play);
+  doc.contents.items?.forEach(item => {
+    if (item.value && item.value.type === 'PLAIN') {
+      item.value.type = 'QUOTE_DOUBLE'; // quote only values, not keys
+    }
   });
 
-  return yamlText;
+  return String(doc);
 }
-
 function savePlaybookYAML(new_vm_name, yamlText) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `${stamp}_${new_vm_name}.yml`;
