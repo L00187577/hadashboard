@@ -81,7 +81,6 @@ export default function Servers() {
     
         try {
           const created = await api.addserversem(data);
-          setRows(s => [created, ...s]);
           setOpen(false);
         } catch (er) {
           setError(er.message || "Failed");
