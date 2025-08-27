@@ -212,6 +212,13 @@ export default function Servers() {
                 onChange={e => setPxForm({ ...pxForm, ipconfig0: e.target.value })} required fullWidth
               />
             </Stack>
+
+            {launching && (
+      <Box display="flex" alignItems="center" mt={2}>
+        <CircularProgress size={28} />
+        <Typography ml={2}>Deploying VM... please wait</Typography>
+      </Box>
+    )}
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setOpen(false)}>Cancel</Button>
