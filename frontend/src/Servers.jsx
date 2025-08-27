@@ -117,7 +117,6 @@ export default function Servers() {
             <TableRow>
               <TableCell>Name</TableCell>
               <TableCell>Provider</TableCell>
-              <TableCell>Status</TableCell>
               <TableCell>IP / ipconfig0</TableCell>
               <TableCell>Role</TableCell>
               <TableCell>Created</TableCell>
@@ -134,7 +133,6 @@ export default function Servers() {
                 <TableRow key={sv.id}>
                   <TableCell>{sv.new_vm_name}</TableCell>
                   <TableCell>{sv.provider}</TableCell>
-                  <TableCell>{sv.status || "—"}</TableCell>
                   <TableCell>{sv.ip || sv.ipconfig0 || "—"}</TableCell>
                   <TableCell>{sv.is_master}</TableCell>
                   <TableCell>{sv.created_at ? new Date(sv.created_at).toLocaleString() : "—"}</TableCell>
