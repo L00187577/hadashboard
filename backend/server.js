@@ -323,7 +323,7 @@ app.post('/api/project/1/templates', async (req, res) => {
           'Authorization': 'Bearer vtdgwvof4ifaamne_prhtlwvnzv6brf4nrapw0u61ly=',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ task_id: taskId, project_id: 1 }),
+       
       });
 
       const taskData = await taskResp.json();

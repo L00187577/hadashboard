@@ -11,6 +11,7 @@ import { api } from "./api";
 export default function Servers() {
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [launching, setLaunching] = useState(false);
 
   // Create Server modal
   const [open, setOpen] = useState(false);
@@ -68,7 +69,7 @@ export default function Servers() {
     } finally {
       setCreating(false);
     }
-
+      setLaunching(true);
      const data = {
                   project_id: 1,
                   inventory_id: 1,
