@@ -35,8 +35,23 @@ export default function Settings() {
       setErr(er.message || "Failed");
     }
 
+
+        const data = {
+          name: form.credential_name,
+          project_id: 1,
+          password: null,
+          json: "{}",
+          env: JSON.stringify({
+            PROXMOX_API_USER: form.api_user,
+            PROXMOX_API_TOKEN: form.api_token,
+            PROXMOX_API_URL: form.api_url,
+            PROXMOX_API_TOKEN_ID: form.api_token_id
+          }),
+          secrets: null
+        };
+
     try {
-      const created = await api.addcredsem(form);
+      const created = await api.addcredsem(data);
       setRows(s => [created, ...s]);
       setOpen(false);
       setForm({ credential_name: "", api_user: "", api_token: "", api_url: "", api_token_id: "" });
