@@ -12,6 +12,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [err, setErr] = useState("");
+  const [launching, setLaunching] = useState(false);
   
 
   const [form, setForm] = useState({
