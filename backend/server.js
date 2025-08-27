@@ -271,7 +271,7 @@ function buildProxmoxPlaybookYAML(data) {
       hosts: 'localhost',
       gather_facts: false,
       vars: {
-        template_name: String('mysql02'),
+        template_name: String(data.template_name),
         new_vm_name: String(data.new_vm_name),
         vm_memory: Number(data.vm_memory),
         vm_cores: Number(data.vm_cores),
