@@ -6,7 +6,7 @@ const bcrypt = require('bcrypt');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
-const YAML = require('js-yaml');
+const YAML = require('yaml');
 
 const app = express();
 app.use(express.json());
