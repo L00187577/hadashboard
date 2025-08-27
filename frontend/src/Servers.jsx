@@ -54,53 +54,54 @@ export default function Servers() {
   };
 
   const submitCreate = async (e) => {
-    e.preventDefault();
-    setError("");
-    setCreating(true);
-    setLaunching(true);
-    try {
-      if (provider !== "proxmox") throw new Error("Azure form not implemented yet");
-      const v = validatePX(pxForm); if (v) throw new Error(v);
-      const created = await api.createServer(pxForm);
-      setServers(s => [created, ...s]);
-      setOpen(false);
+  e.preventDefault();
+  setError("");
+  setCreating(true);
+  setLaunching(true);
+
+  try {
+    if (provider !== "proxmox") throw new Error("Azure form not implemented yet");
+
+    const v = validatePX(pxForm);
+    if (v) throw new Error(v);
+
+    // 1) Save the server row first
+    const created = await api.createServer(pxForm);
+    setServers((s) => [created, ...s]);
+
+    // 2) Ask backend to create a Semaphore template + run + poll until finished
+    const payload = {
+      project_id: 1,
+      inventory_id: 1,
+      repository_id: 1,
+      environment_id: 2,
+      name: pxForm.new_vm_name,
+      playbook:
+        "/root/jery/new/ha-platform-full/backend/generated/playbooks/" +
+        pxForm.new_vm_name +
+        ".yml",
+      app: "ansible",
+    };
+
+    const result = await api.addserversem(payload); // waits for 200 OK
+
+    // 3) Decide what to do based on finalTask
+    if (result?.finalTask?.status === "success") {
+      // success → close dialog and reset form
       setPxForm(blankProxmox);
-
-     
-     const data = {
-                  project_id: 1,
-                  inventory_id: 1,
-                  repository_id: 1,
-                  environment_id: 2,
-                  name: pxForm.new_vm_name,
-                  playbook: "/root/jery/new/ha-platform-full/backend/generated/playbooks/" + pxForm.new_vm_name +".yml",
-                  app: "ansible"
-            };
-    
-     /*   try {
-          const created = await api.addserversem(data);
-          setOpen(false);
-        } catch (er) {
-          setError(er.message || "Failed");
-        }*/
-
-           const result = await api.addserversem(data);
-
-    console.log("Final result from semaphore:", result);
-     if (result.finalTask?.status === "success") {
-      setOpen(false); // close only if successful
+      setOpen(false);
     } else {
-      setError("Deployment failed: " + (result.finalTask?.status || "unknown error"));
+      // failure → keep dialog open and show message
+      const status = result?.finalTask?.status || "unknown";
+      setError(`Deployment failed (status: ${status}). Check Semaphore logs.`);
     }
-
-    
   } catch (err) {
     setError(err.message || "Create failed");
   } finally {
     setCreating(false);
-    setLaunching(false);  // stop spinner when backend finishes
+    setLaunching(false);
   }
-  };
+};
 
   const openReplica = (sv) => {
     setParent(sv);
