@@ -80,12 +80,25 @@ export default function Servers() {
                   app: "ansible"
             };
     
-        try {
+     /*   try {
           const created = await api.addserversem(data);
           setOpen(false);
         } catch (er) {
           setError(er.message || "Failed");
-        }
+        }*/
+
+           const result = await api.addserversem(data);
+
+    console.log("Final result from semaphore:", result);
+    // you could check result.finalTask.status === "success" here
+
+    setOpen(false);
+  } catch (err) {
+    setError(err.message || "Create failed");
+  } finally {
+    setCreating(false);
+    setLaunching(false);  // stop spinner when backend finishes
+  }
   };
 
   const openReplica = (sv) => {

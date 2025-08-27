@@ -344,7 +344,7 @@ app.post('/api/project/1/templates', async (req, res) => {
 
     // 4. Return everything
     res.status(200).json({
-      createdTemplate,
+      data,
       runResult,
       finalTask,
     });
