@@ -57,6 +57,7 @@ export default function Servers() {
     e.preventDefault();
     setError("");
     setCreating(true);
+    setLaunching(true);
     try {
       if (provider !== "proxmox") throw new Error("Azure form not implemented yet");
       const v = validatePX(pxForm); if (v) throw new Error(v);
@@ -64,12 +65,8 @@ export default function Servers() {
       setServers(s => [created, ...s]);
       setOpen(false);
       setPxForm(blankProxmox);
-    } catch (err) {
-      setError(err.message || "Create failed");
-    } finally {
-      setCreating(false);
-    }
-      setLaunching(true);
+
+     
      const data = {
                   project_id: 1,
                   inventory_id: 1,
