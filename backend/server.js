@@ -340,7 +340,7 @@ function buildProxmoxPlaybookYAML({
   ];
 
   // Force all string scalars to be DOUBLE-QUOTED
-  const yamlText = YAML.stringify(play, {
+  const yamlText = yaml.stringify(play, {
     defaultStringType: 'QUOTE_DOUBLE',
     simpleKeys: true,
   });
