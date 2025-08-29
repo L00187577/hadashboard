@@ -1,13 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Box, Paper, Typography, Table, TableHead, TableRow, TableCell, TableBody,
-  TableContainer, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, MenuItem, CircularProgress, Alert
+  Box, Button, Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, Table, TableBody, TableCell, TableContainer, TableHead,
+  TableRow, Paper, Typography, CircularProgress, MenuItem, Select,
+  FormControl, InputLabel, Alert, Stack
 } from "@mui/material";
-import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
+import AddIcon from "@mui/icons-material/Add";
 import { api } from "./api";
 
-const algoOptions = [
+const LB_ALGOS = [
   { value: "round_robin", label: "Round Robin" },
   { value: "least_connections", label: "Least Connections" },
   { value: "source_ip_hash", label: "Source IP Hash" },
@@ -16,116 +17,107 @@ const algoOptions = [
 export default function Groups() {
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [dlgOpen, setDlgOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [selectedServer, setSelectedServer] = useState(null);
-  const [form, setForm] = useState({ lb_algorithm: "round_robin", proxy_ip: "" });
 
-  const handleOpen = (server) => {
-    setSelectedServer(server);
+  // Create Group modal
+  const [grpOpen, setGrpOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
+  const [parent, setParent] = useState(null);
+  const [form, setForm] = useState({
+    lb_algorithm: "round_robin",
+    proxy_ip: "",
+  });
+
+  useEffect(() => {
+    api.listServers()
+      .then(setServers)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const openGroup = (sv) => {
+    setParent(sv);
     setForm({ lb_algorithm: "round_robin", proxy_ip: "" });
-    setDlgOpen(true);
+    setError("");
+    setGrpOpen(true);
   };
-  const handleClose = () => {
-    setDlgOpen(false);
-    setSelectedServer(null);
-    setErr("");
+
+  const validate = (data) => {
+    if (!data.lb_algorithm) return "Please select an LB algorithm";
+    if (!data.proxy_ip?.trim()) return "Please provide Proxy IP / Host";
+    if (!/^([a-zA-Z0-9\.\-]+)$/.test(data.proxy_ip.trim()))
+      return "Proxy IP/host looks invalid";
+    return "";
   };
-  const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
-  const validate = useMemo(
-    () => (data) => {
-      if (!data.proxy_ip?.trim()) return "Proxy IP is required";
-      // very light check; keep simple (IPv4 or hostname)
-      if (!/^([a-zA-Z0-9\.\-]+)$/.test(data.proxy_ip.trim())) return "Proxy IP/host looks invalid";
-      if (!algoOptions.find(a => a.value === data.lb_algorithm)) return "Select a valid LB algorithm";
-      return "";
-    },
-    []
-  );
-
-  const submit = async () => {
-    setErr("");
-    const v = validate(form);
-    if (v) { setErr(v); return; }
-    if (!selectedServer) { setErr("No server selected"); return; }
-    setSubmitting(true);
+  const submitGroup = async (e) => {
+    e.preventDefault();
+    setError("");
+    setCreating(true);
     try {
-      const payload = {
-        server_id: selectedServer.id,
+      if (!parent?.id) throw new Error("No server selected");
+      const v = validate(form); if (v) throw new Error(v);
+
+      // Backend expects: { server_id, lb_algorithm, proxy_ip }
+      await api.createGroup({
+        server_id: parent.id,
         lb_algorithm: form.lb_algorithm,
         proxy_ip: form.proxy_ip.trim(),
-      };
-      await api.createGroup(payload);
-      handleClose();
-    } catch (e) {
-      setErr(e.message || "Failed to create group");
+      });
+
+      setGrpOpen(false);
+      setParent(null);
+    } catch (err) {
+      setError(err.message || "Create group failed");
     } finally {
-      setSubmitting(false);
+      setCreating(false);
     }
   };
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      setLoading(true);
-      setErr("");
-      try {
-        const data = await api.listServers();
-        if (alive) setServers(data);
-      } catch (e) {
-        if (alive) setErr(e.message || "Failed to load servers");
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
-
   return (
     <Box p={3}>
-      <Typography variant="h4" gutterBottom>Groups</Typography>
-
-      {err && !dlgOpen && <Alert severity="error" sx={{ mb: 2 }}>{err}</Alert>}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Typography variant="h4">Groups</Typography>
+        {/* Page-level action not needed since creation is per-row; keep layout consistent */}
+        <Box />
+      </Box>
 
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Server Name</TableCell>
-              <TableCell>Memory (MiB)</TableCell>
-              <TableCell>Cores</TableCell>
+              <TableCell>Name</TableCell>
               <TableCell>Provider</TableCell>
-              <TableCell>IP (ipconfig0)</TableCell>
-              <TableCell align="right">Actions</TableCell>
+              <TableCell>IP / ipconfig0</TableCell>
+              <TableCell>Role</TableCell>
+              <TableCell>Created</TableCell>
+              <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow>
                 <TableCell colSpan={6} align="center">
-                  <CircularProgress size={28} />
+                  <CircularProgress />
                 </TableCell>
               </TableRow>
             ) : servers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center">No servers found.</TableCell>
+                <TableCell colSpan={6} align="center">No servers.</TableCell>
               </TableRow>
             ) : (
-              servers.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell>{s.new_vm_name}</TableCell>
-                  <TableCell>{s.vm_memory}</TableCell>
-                  <TableCell>{s.vm_cores}</TableCell>
-                  <TableCell>{s.provider || "-"}</TableCell>
-                  <TableCell>{s.ipconfig0}</TableCell>
-                  <TableCell align="right">
+              servers.map(sv => (
+                <TableRow key={sv.id}>
+                  <TableCell>{sv.new_vm_name}</TableCell>
+                  <TableCell>{sv.provider}</TableCell>
+                  <TableCell>{sv.ip || sv.ipconfig0 || "—"}</TableCell>
+                  <TableCell>{sv.is_master}</TableCell>
+                  <TableCell>{sv.created_at ? new Date(sv.created_at).toLocaleString() : "—"}</TableCell>
+                  <TableCell>
                     <Button
                       size="small"
-                      variant="contained"
-                      startIcon={<AddCircleOutlineIcon />}
-                      onClick={() => handleOpen(s)}
+                      variant="outlined"
+                      startIcon={<AddIcon />}
+                      onClick={() => openGroup(sv)}
                     >
                       Create Group
                     </Button>
@@ -137,43 +129,48 @@ export default function Groups() {
         </Table>
       </TableContainer>
 
-      <Dialog open={dlgOpen} onClose={submitting ? undefined : handleClose} fullWidth maxWidth="sm">
+      {/* Create Group (per-row) */}
+      <Dialog open={grpOpen} onClose={() => setGrpOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
-          Create Group {selectedServer ? `for ${selectedServer.new_vm_name}` : ""}
+          Create Group {parent ? `for ${parent.new_vm_name}` : ""}
         </DialogTitle>
-        <DialogContent dividers>
-          {err && <Alert severity="error" sx={{ mb: 2 }}>{err}</Alert>}
-          <TextField
-            label="LB Algorithm"
-            name="lb_algorithm"
-            value={form.lb_algorithm}
-            onChange={handleChange}
-            select
-            fullWidth
-            margin="normal"
-            required
-          >
-            {algoOptions.map(opt => (
-              <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            label="Proxy IP / Host"
-            name="proxy_ip"
-            value={form.proxy_ip}
-            onChange={handleChange}
-            placeholder="e.g. 192.168.0.50"
-            fullWidth
-            margin="normal"
-            required
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleClose} disabled={submitting}>Cancel</Button>
-          <Button variant="contained" onClick={submit} disabled={submitting}>
-            {submitting ? <CircularProgress size={20} /> : "Create Group"}
-          </Button>
-        </DialogActions>
+        <form onSubmit={submitGroup}>
+          <DialogContent>
+            <Stack spacing={2}>
+              {error && <Alert severity="error">{error}</Alert>}
+
+              <FormControl fullWidth>
+                <InputLabel id="lb-algo">LB Algorithm</InputLabel>
+                <Select
+                  labelId="lb-algo"
+                  label="LB Algorithm"
+                  value={form.lb_algorithm}
+                  onChange={(e) => setForm({ ...form, lb_algorithm: e.target.value })}
+                  required
+                >
+                  {LB_ALGOS.map(opt => (
+                    <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <TextField
+                label="Proxy IP / Host"
+                value={form.proxy_ip}
+                onChange={(e) => setForm({ ...form, proxy_ip: e.target.value })}
+                placeholder="e.g. 192.168.0.50"
+                fullWidth
+                required
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setGrpOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="contained" disabled={creating}>
+              {creating ? "Creating…" : "Create Group"}
+            </Button>
+          </DialogActions>
+        </form>
       </Dialog>
     </Box>
   );
