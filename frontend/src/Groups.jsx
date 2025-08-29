@@ -5,7 +5,7 @@ import {
   TextField, MenuItem, CircularProgress, Alert
 } from "@mui/material";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
-import { api } from "../api";
+import { api } from "./api";
 
 const algoOptions = [
   { value: "round_robin", label: "Round Robin" },
