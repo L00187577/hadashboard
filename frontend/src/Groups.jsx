@@ -72,7 +72,7 @@ export default function Groups() {
       setLoading(true);
       setErr("");
       try {
-        const data = await api.getServers();
+        const data = await api.listServers();
         if (alive) setServers(data);
       } catch (e) {
         if (alive) setErr(e.message || "Failed to load servers");
