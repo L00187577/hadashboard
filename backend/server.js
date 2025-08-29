@@ -440,6 +440,23 @@ function savePlaybookYAML(new_vm_name, yamlText) {
   return { filePath, publicUrl, filename };
 }
 
+app.post('/api/groups', async (req, res) => {
+  const { server_id, lb_algorithm, proxy_ip } = req.body || {};
+  if (!server_id || !lb_algorithm || !proxy_ip) {
+    return res.status(400).json({ error: "server_id, lb_algorithm, proxy_ip required" });
+  }
+  try {
+    const [r] = await pool.execute(
+      "INSERT INTO groups (server_id, lb_algorithm, proxy_ip) VALUES (?, ?, ?)",
+      [server_id, lb_algorithm, proxy_ip]
+    );
+    const [row] = await pool.execute("SELECT * FROM groups WHERE id = ?", [r.insertId]);
+    res.status(201).json(row[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Internal error" });
+  }
+});
 
 /* ========= Start ========= */
 const port = process.env.PORT || 3001;

@@ -14,8 +14,28 @@ export const api = {
       .then(r => { if (!r.ok) throw new Error(`Cred failed ${r.status}`); return r.json(); }),
    addcredsem: (payload) =>
     fetch(`${BASE}/api/project/1/environment`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      .then(r => { if (!r.ok) throw new Error(`Cred failed ${r.status}`); return r.json(); }), 
+      .then(r => { if (!r.ok) throw new Error(`Credsem failed ${r.status}`); return r.json(); }), 
      addserversem: (payload) =>
     fetch(`${BASE}/api/project/1/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      .then(r => { if (!r.ok) throw new Error(`create failed ${r.status}`); return r.json(); }),     
+      .then(r => { if (!r.ok) throw new Error(`create failed ${r.status}`); return r.json(); }),
+      async getServers() {
+    const r = await fetch(`${BASE}/api/servers`, { credentials: "include" });
+    if (!r.ok) throw new Error(`Failed to fetch servers: ${r.status}`);
+    return r.json();
+  },
+
+  async createGroup(payload) {
+    // expected payload: { server_id, lb_algorithm, proxy_ip }
+    const r = await fetch(`${BASE}/api/groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      const msg = await r.text().catch(() => "");
+      throw new Error(`Create group failed: ${r.status} ${msg}`);
+    }
+    return r.json();
+  },     
 };
