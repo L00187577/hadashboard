@@ -219,15 +219,7 @@ app.post('/api/servers/:id/replica', async (req, res) => {
   }
 });
 
-/** Alias for convenience */
-app.post('/api/servers/:id/replica/proxmox', (req, res, next) => {
-  req.body.provider = req.body.provider || 'proxmox';
-  app._router.handle(
-    { ...req, url: `/api/servers/${req.params.id}/replica`, method: 'POST' },
-    res,
-    next
-  );
-});
+
 
 /** Update status/ip */
 app.patch('/api/servers/:id', async (req, res) => {

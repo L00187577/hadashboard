@@ -6,7 +6,7 @@ export const api = {
     fetch(`${BASE}/api/servers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(r => { if (!r.ok) throw new Error(`Create failed ${r.status}`); return r.json(); }),
   createReplica: (id, payload) =>
-    fetch(`${BASE}/api/servers/${id}/replica/proxmox`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    fetch(`${BASE}/api/servers/${id}/replica`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(r => { if (!r.ok) throw new Error(`Replica failed ${r.status}`); return r.json(); }),
   listCreds: () => fetch(`${BASE}/api/proxmox_creds`).then(r => r.json()),
   addCred: (payload) =>
