@@ -440,6 +440,23 @@ function savePlaybookYAML(new_vm_name, yamlText) {
   return { filePath, publicUrl, filename };
 }
 
+
+app.get('/api/groups', async (_req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, new_vm_name, vm_memory, vm_cores, ci_user, ipconfig0, 
+              is_master, provider, created_at 
+       FROM servers 
+       WHERE is_master = 'master'
+       ORDER BY id DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("Error fetching groups:", err);
+    res.status(500).json({ error: "Failed to fetch groups" });
+  }
+});
+
 app.post('/api/groups', async (req, res) => {
   const { server_id, lb_algorithm, proxy_ip } = req.body || {};
   if (!server_id || !lb_algorithm || !proxy_ip) {

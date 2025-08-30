@@ -29,7 +29,7 @@ export default function Groups() {
   });
 
   useEffect(() => {
-    api.listServers()
+    api.listGroups()
       .then(setServers)
       .finally(() => setLoading(false));
   }, []);

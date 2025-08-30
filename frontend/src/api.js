@@ -24,6 +24,8 @@ export const api = {
     return r.json();
   },
 
+  listGroups: () => fetch(`${BASE}/api/groups`).then(r => r.json()),
+
   async createGroup(payload) {
     // expected payload: { server_id, lb_algorithm, proxy_ip }
     const r = await fetch(`${BASE}/api/groups`, {
