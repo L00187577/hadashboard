@@ -16,7 +16,7 @@ export default function App() {
       </Tabs>
       {tab === 0 && <Servers />}
       {tab === 1 && <Settings />}
-      {tab === 1 && <Groups />}
+      {tab === 2 && <Groups />}
     </Box>
   );
 }
