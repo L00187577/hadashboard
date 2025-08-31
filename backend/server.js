@@ -88,7 +88,7 @@ const replicaSchema = Joi.object({
 /** Proxmox Credentials */
 app.get('/api/proxmox_creds', async (_req, res) => {
   const [rows] = await pool.query(
-    'SELECT id, credential_name, api_user, api_url, api_token_id, created_at FROM proxmox_creds ORDER BY id DESC'
+    'SELECT id, credential_name, api_user, api_url, created_at FROM proxmox_creds ORDER BY id DESC'
   );
   res.json(rows);
 });
@@ -354,7 +354,7 @@ function buildProxmoxPlaybookYAML(data) {
       hosts: 'localhost',
       gather_facts: false,
       vars: {
-        template_name: new YAML.Scalar('mysql02', { type: YAML.Scalar.QUOTE_DOUBLE }),
+        template_name: new YAML.Scalar('jerymysql', { type: YAML.Scalar.QUOTE_DOUBLE }),
         new_vm_name: new YAML.Scalar(data.new_vm_name, { type: YAML.Scalar.QUOTE_DOUBLE }),
         vm_memory: Number(data.vm_memory),
         vm_cores: Number(data.vm_cores),
