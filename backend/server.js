@@ -172,12 +172,12 @@ app.post('/api/servers', async (req, res) => {
 });
 
 /** Replicas */
-app.post('/api/servers/:id/replica', async (req, res) => {
+app.post('/api/replica', async (req, res) => {
   const { error, value } = replicaSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.details[0].message });
 
   const [parents] = await pool.query(
-    'SELECT id, new_vm_name, is_master, provider FROM servers WHERE id=?',
+    'SELECT id, new_vm_name, is_master, provider, ipconfig0 FROM servers WHERE id=?',
     [req.params.id]
   );
   if (parents.length === 0) return res.status(404).json({ error: 'Parent server not found' });
@@ -192,6 +192,8 @@ app.post('/api/servers/:id/replica', async (req, res) => {
   const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
   const hashedCi = await bcrypt.hash(value.ci_password, saltRounds);
   const hashedDb = await bcrypt.hash(value.mysql_password, saltRounds);
+  const masterip = parent.ipconfig0.split(',')[0].split('=')[1].split('/')[0];
+  const replip = value.ipconfig0.split(',')[0].split('=')[1].split('/')[0];
 
   const sql = `
     INSERT INTO servers
@@ -217,26 +219,26 @@ app.post('/api/servers/:id/replica', async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'Internal server error' });
   }
+   const yamlText = buildreplPlaybookYAML({
+      
+      new_vm_name,
+      vm_memory,
+      vm_cores,
+      ci_user,
+      ci_password, // plaintext required in YAML to pass to cloud-init
+      ipconfig0,
+      masterip,
+      masterName,
+      replip,
+      
+    });
+
+    const { publicUrl, filename } = savePlaybookYAML(new_vm_name, yamlText);
 });
 
 
 
-/** Update status/ip */
-app.patch('/api/servers/:id', async (req, res) => {
-  const { status, ip } = req.body;
-  if (!status && !ip) return res.status(400).json({ error: 'No fields to update' });
-  const fields = [];
-  const params = [];
-  if (status) { fields.push('status=?'); params.push(status); }
-  if (ip) { fields.push('ip=?'); params.push(ip); }
-  params.push(req.params.id);
-  await pool.execute(`UPDATE servers SET ${fields.join(', ')}, updated_at=NOW() WHERE id=?`, params);
-  const [row] = await pool.query(
-    'SELECT id, new_vm_name, provider, status, ip, created_at FROM servers WHERE id=?',
-    [req.params.id]
-  );
-  res.json(row[0] || {});
-});
+
 
 /** Proxy endpoint (Semaphore API credentials) **/
 app.post('/api/project/1/environment', async (req, res) => {
@@ -271,12 +273,6 @@ app.post('/api/project/1/templates', async (req, res) => {
     const data = await response.json();
 
 
-
-    /*
-    res.status(response.status).json(data);
-  } catch (err) {
-    res.status(500).json({ error: 'Proxy error', details: err.message });
-  }*/
 
      if (!response.ok) {
       return res.status(response.status).json(data);
@@ -421,6 +417,249 @@ function buildProxmoxPlaybookYAML(data) {
     }
   });
 
+  return String(doc);
+}
+
+function buildreplPlaybookYAML(data) {
+  const q = (s) => new YAML.Scalar(String(s), { type: YAML.Scalar.QUOTE_DOUBLE });
+
+  const plays = [
+    // Play 0: Provision VM on Proxmox
+    {
+      name: 'Create VM from template in Proxmox',
+      hosts: 'localhost',
+      gather_facts: false,
+      vars: {
+        template_name: q('mysqlb'),
+        new_vm_name: q(data.new_vm_name),
+        vm_memory: Number(data.vm_memory),
+        vm_cores: Number(data.vm_cores),
+        mastip: q(data.masterip),
+      },
+      tasks: [
+        {
+          name: 'Clone VM from template',
+          'community.general.proxmox_kvm': {
+            api_user: q("{{ lookup('env', 'PROXMOX_API_USER') }}"),
+            api_token_secret: q("{{ lookup('env', 'PROXMOX_API_TOKEN') }}"),
+            api_token_id: q("{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}"),
+            api_host: q("{{ lookup('env', 'PROXMOX_API_URL') }}"),
+            node: q(data.node || 'pve'),
+            clone: q("{{ template_name }}"),
+            name: q("{{ new_vm_name }}"),
+            cores: q("{{ vm_cores }}"),
+            memory: q("{{ vm_memory }}"),
+            state: q('present'),
+            timeout: 300,
+          },
+        },
+        {
+          name: 'Set Cloud-Init network config',
+          'community.general.proxmox_kvm': {
+            api_user: q("{{ lookup('env', 'PROXMOX_API_USER') }}"),
+            api_token_secret: q("{{ lookup('env', 'PROXMOX_API_TOKEN') }}"),
+            api_token_id: q("{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}"),
+            api_host: q("{{ lookup('env', 'PROXMOX_API_URL') }}"),
+            node: q(data.node || 'pve'),
+            name: q("{{ new_vm_name }}"),
+            cores: q("{{ vm_cores }}"),
+            memory: q("{{ vm_memory }}"),
+            ciuser: q(data.ci_user),
+            cipassword: q(data.ci_password),
+            ipconfig: {
+              ipconfig0: q(data.ipconfig0),
+            },
+            update: true,
+            update_unsafe: true,
+            state: q('present'),
+          },
+        },
+        {
+          name: 'Start the new VM',
+          'community.general.proxmox_kvm': {
+            api_user: q("{{ lookup('env', 'PROXMOX_API_USER') }}"),
+            api_token_secret: q("{{ lookup('env', 'PROXMOX_API_TOKEN') }}"),
+            api_token_id: q("{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}"),
+            api_host: q("{{ lookup('env', 'PROXMOX_API_URL') }}"),
+            node: q(data.node || 'pve'),
+            name: q("{{ new_vm_name }}"),
+            state: q('started'),
+          },
+        },
+      ],
+    },
+
+    // Play 1: Add PRIMARY & REPLICA to in-memory inventory
+    {
+      name: 'Add PRIMARY and REPLICA to in-memory inventory',
+      hosts: 'localhost',
+      gather_facts: false,
+      vars: {
+        primary_host: q(data.masterip),
+        primary_port: 3306,
+        primary_root_user: q('root'),
+        primary_root_password: q('hehehe'),
+        replication_user: q('repl'),
+        replication_password: q('hahaha'),
+
+        replica_root_user: q('root'),
+        replica_root_password: q('hehehe'),
+        replica_server_id: 2,
+        
+
+
+      },
+      tasks: [
+        {
+          name: 'Add the primary to the in-memory inventory',
+          add_host: {
+            name: q('mysqlp'),
+            ansible_host: q(data.masterip),
+            ansible_user: q('jery'),
+            ansible_password: q('hehehe'),
+            ansible_python_interpreter: '/usr/bin/python3',
+          },
+        },
+        {
+          name: 'Add the replica to the in-memory inventory',
+          add_host: {
+            name: q('mysqlr'),
+            ansible_host: q(data.replip),
+            ansible_user: q('jery'),
+            ansible_password: q('hehehe'),
+            ansible_python_interpreter: '/usr/bin/python3',
+          },
+        },
+      ],
+    },
+
+    // Play 2: Phase 1 Prepare PRIMARY
+    {
+      name: 'Phase 1 Prepare PRIMARY (user + GTID dump)',
+      hosts: 'mysqlp',
+      gather_facts: true,
+      become: true,
+      vars: {
+        primary_root_user: q('root'),
+        primary_root_password: q('hehehe'),
+        replication_user: q('repl'),
+        replication_password: q('hahaha'),
+      },
+      tasks: [
+        {
+          name: 'Ensure replication user exists on PRIMARY',
+          'community.mysql.mysql_user': {
+            name: q('{{ replication_user }}'),
+            password: q('{{ replication_password }}'),
+            host: q('%'),
+            priv: q('*.*:REPLICATION SLAVE,REPLICATION CLIENT'),
+            login_user: q('{{ primary_root_user }}'),
+            login_password: q('{{ primary_root_password }}'),
+            state: q('present'),
+          },
+        },
+      ],
+    },
+
+    // Play 3: Phase 2 Prepare REPLICA
+    {
+      name: 'Phase 2 Prepare REPLICA (config + start replication)',
+      hosts: 'mysqlr',
+      gather_facts: true,
+      become: true,
+      vars: {
+        mycnf_path: q('/etc/mysql/conf.d/99-replica.cnf'),
+        replica_server_id: 2,
+        primary_host: q(data.masterip),
+        primary_port: 3306,
+        replication_user: q('repl'),
+        replication_password: q('hahaha'),
+        replica_root_user: q('root'),
+        replica_root_password: q('hehehe'),
+      },
+      tasks: [
+        {
+          name: 'Ensure replica MySQL config for GTID/binlog/relay/read-only',
+          'ansible.builtin.blockinfile': {
+            path: q('{{ mycnf_path }}'),
+            create: true,
+            mode: q('0644'),
+            block:
+              '[mysqld]\n' +
+              'server_id = {{ replica_server_id }}\n' +
+              'log_bin = mysql-bin\n' +
+              'binlog_format = ROW\n' +
+              'gtid_mode = ON\n' +
+              'enforce_gtid_consistency = ON\n' +
+              'relay_log = relay-bin\n' +
+              'read_only = ON\n' +
+              'super_read_only = ON\n',
+          },
+          notify: q('Restart MySQL'),
+        },
+        { name: 'Flush handlers if config changed', 'ansible.builtin.meta': 'flush_handlers' },
+        {
+          name: 'Reset replica (clean state)',
+          'community.mysql.mysql_replication': {
+            mode: q('resetreplica'),
+            login_user: q('{{ replica_root_user }}'),
+            login_password: q('{{ replica_root_password }}'),
+          },
+        },
+        {
+          name: 'Configure replication with AUTO_POSITION (GTID)',
+          'community.mysql.mysql_replication': {
+            mode: q('changeprimary'),
+            primary_host: q('{{ primary_host }}'),
+            primary_port: q('{{ primary_port | default(3306) }}'),
+            primary_user: q('{{ replication_user }}'),
+            primary_password: q('{{ replication_password }}'),
+            primary_auto_position: true,
+            login_user: q('{{ replica_root_user }}'),
+            login_password: q('{{ replica_root_password }}'),
+          },
+        },
+        {
+          name: 'Start replication',
+          'community.mysql.mysql_replication': {
+            mode: q('startreplica'),
+            login_user: q('{{ replica_root_user }}'),
+            login_password: q('{{ replica_root_password }}'),
+          },
+        },
+        {
+          name: 'Check replication status',
+          'community.mysql.mysql_replication': {
+            mode: q('getreplica'),
+            login_user: q('{{ replica_root_user }}'),
+            login_password: q('{{ replica_root_password }}'),
+          },
+          register: 'repl_status',
+        },
+        {
+          name: 'Fail if replication threads not running',
+          'ansible.builtin.fail': {
+            msg:
+              'Replication not healthy: IO={{ repl_status.replica_status.Slave_IO_Running | default(repl_status.replica_status.Replica_IO_Running) }}, ' +
+              'SQL={{ repl_status.replica_status.Slave_SQL_Running | default(repl_status.replica_status.Replica_SQL_Running) }}',
+          },
+          when:
+            "(repl_status.replica_status.Slave_IO_Running is defined and repl_status.replica_status.Slave_IO_Running != 'Yes') or " +
+            "(repl_status.replica_status.Replica_IO_Running is defined and repl_status.replica_status.Replica_IO_Running != 'YES') or " +
+            "(repl_status.replica_status.Slave_SQL_Running is defined and repl_status.replica_status.Slave_SQL_Running != 'Yes') or " +
+            "(repl_status.replica_status.Replica_SQL_Running is defined and repl_status.replica_status.Replica_SQL_Running != 'YES')",
+        },
+      ],
+      handlers: [
+        {
+          name: 'Restart MySQL',
+          'ansible.builtin.service': { name: 'mysql', state: 'restarted' },
+        },
+      ],
+    },
+  ];
+
+  const doc = new YAML.Document(plays);
   return String(doc);
 }
 function savePlaybookYAML(new_vm_name, yamlText) {

@@ -31,11 +31,13 @@ export default function Servers() {
   const [repCreating, setRepCreating] = useState(false);
   const [repError, setRepError] = useState("");
   const [parent, setParent] = useState(null);
-  const [repForm, setRepForm] = useState({
-    new_vm_name: "", vm_memory: "", vm_cores: "",
+  const replProxmox = {
+   new_vm_name: "", vm_memory: "", vm_cores: "",
     ci_user: "", ci_password: "", mysql_password: "",
     ipconfig0: "", provider: "proxmox"
-  });
+    };   
+
+  const [repForm, setRepForm] = useState(replProxmox);
 
   useEffect(() => {
     api.listServers()
@@ -119,21 +121,56 @@ export default function Servers() {
     setRepOpen(true);
   };
 
-  const submitReplica = async (e) => {
+const submitReplica = async (e) => {
     e.preventDefault();
     setRepError("");
     setRepCreating(true);
+  setLaunching(true);					 
+
     try {
+																				  
+
       const v = validatePX(repForm); if (v) throw new Error(v);
       const created = await api.createReplica(parent.id, repForm);
       setServers(s => [created, ...s]);
-      setRepOpen(false);
-    } catch (err) {
-      setRepError(err.message || "Replica create failed");
-    } finally {
-      setRepCreating(false);
-    }
-  };
+
+								   
+		/*										   
+									   
+
+    // 2) Ask backend to create a Semaphore template + run + poll until finished
+    const payload = {
+      project_id: 1,
+      inventory_id: 1,
+      repository_id: 1,
+      environment_id: 2,
+      name: repForm.new_vm_name,
+      playbook:
+        "/root/jery/new/ha-platform-full/backend/generated/playbooks/" +
+        repForm.new_vm_name +
+        ".yml",
+      app: "ansible",
+    };
+
+    const result = await api.addreplsem(payload); // waits for 200 OK
+
+    // 3) Decide what to do based on finalTask
+    if (result?.finalTask?.status === "success") {
+      // success → close dialog and reset form
+      setRepForm(replProxmox);
+      setOpen(false);
+    } else {
+      // failure → keep dialog open and show message
+      const status = result?.finalTask?.status || "unknown";
+      setError(`Deployment failed (status: ${status}). Check Semaphore logs.`);
+    } */
+  } catch (err) {
+    setError(err.message || "Create failed");
+  } finally {
+    setCreating(false);
+    setLaunching(false);
+  }
+};
 
   return (
     <Box p={3}>
