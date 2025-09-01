@@ -172,75 +172,86 @@ app.post('/api/servers', async (req, res) => {
 });
 
 /** Replicas */
-app.post('/api/replica', async (req, res) => {
+
+app.post('/api/replica/:id', async (req, res) => {
   const { error, value } = replicaSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.details[0].message });
 
+  const parentId = req.params.id;
+
+  // Look up parent
   const [parents] = await pool.query(
-    'SELECT id, new_vm_name, is_master, provider, ipconfig0 FROM servers WHERE id=?',
-    [req.params.id]
+    'SELECT id, new_vm_name, is_master, provider, ipconfig0 FROM servers WHERE id = ?',
+    [parentId]
   );
   if (parents.length === 0) return res.status(404).json({ error: 'Parent server not found' });
-  const parent = parents[0];
 
+  const parent = parents[0];
   const masterName =
     parent.is_master && parent.is_master.toLowerCase() !== 'master'
       ? parent.is_master
       : parent.new_vm_name;
 
   const provider = value.provider || parent.provider || 'proxmox';
+
+  // Hash secrets for DB storage
   const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
   const hashedCi = await bcrypt.hash(value.ci_password, saltRounds);
   const hashedDb = await bcrypt.hash(value.mysql_password, saltRounds);
+
+  // Extract IPs for YAML
   const masterip = parent.ipconfig0.split(',')[0].split('=')[1].split('/')[0];
   const replip = value.ipconfig0.split(',')[0].split('=')[1].split('/')[0];
 
-  const sql = `
-    INSERT INTO servers
-      (new_vm_name, vm_memory, vm_cores, ci_user, ci_password, mysql_password, ipconfig0, is_master, provider)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
-  const params = [
-    value.new_vm_name, value.vm_memory, value.vm_cores,
-    value.ci_user, hashedCi, hashedDb, value.ipconfig0,
-    masterName, provider
-  ];
-
   try {
+    // Insert replica row
+    const sql = `
+      INSERT INTO servers
+        (new_vm_name, vm_memory, vm_cores, ci_user, ci_password, mysql_password, ipconfig0, is_master, provider)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    const params = [
+      value.new_vm_name, value.vm_memory, value.vm_cores,
+      value.ci_user, hashedCi, hashedDb, value.ipconfig0,
+      masterName, provider
+    ];
     const [result] = await pool.execute(sql, params);
-    const [row] = await pool.query(
-      `SELECT id, new_vm_name, vm_memory, vm_cores, ci_user, ipconfig0, is_master, provider, created_at
-       FROM servers WHERE id=?`,
-      [result.insertId]
-    );
-    res.status(201).json(row[0]);
-  } catch (e) {
-    if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Server name must be unique' });
-    console.error(e);
-    res.status(500).json({ error: 'Internal server error' });
-  }
 
-  console.log(`after db`);
-   const yamlText = buildreplPlaybookYAML({
-      
-      new_vm_name,
-      vm_memory,
-      vm_cores,
-      ci_user,
-      ci_password, // plaintext required in YAML to pass to cloud-init
-      ipconfig0,
+    // Build YAML BEFORE responding (so we can report any errors)
+    const yamlText = buildreplPlaybookYAML({
+      new_vm_name: value.new_vm_name,
+      vm_memory: value.vm_memory,
+      vm_cores: value.vm_cores,
+      ci_user: value.ci_user,
+      ci_password: value.ci_password, // needs plaintext for cloud-init
+      ipconfig0: value.ipconfig0,
       masterip,
       masterName,
       replip,
-      
     });
 
-    console.log(`after build yaml`);
+    const { publicUrl, filename } = savePlaybookYAML(value.new_vm_name, yamlText);
 
-    const { publicUrl, filename } = savePlaybookYAML(new_vm_name, yamlText);
+    // Return the newly created server row + playbook info
+    const [rows] = await pool.query(
+      `SELECT id, new_vm_name, vm_memory, vm_cores, ci_user, ipconfig0, is_master, provider, created_at
+       FROM servers WHERE id = ?`,
+      [result.insertId]
+    );
 
-    console.log(`after save yaml`);
+    return res.status(201).json({
+      ...rows[0],
+      playbook_url: publicUrl,
+      playbook_path: filename,
+    });
+
+  } catch (e) {
+    if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Server name must be unique' });
+    console.error(e);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 });
+
 
 
 
