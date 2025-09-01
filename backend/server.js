@@ -557,6 +557,12 @@ function buildreplPlaybookYAML(data) {
           until: "ping_primary is succeeded"
         },
         {
+          name: 'Wait 20 seconds',
+          'ansible.builtin.pause': {
+            seconds: 20,
+        },
+        },
+        {
           name: "Test SSH connectivity to replica",
           delegate_to: "mysqlr",
           "ansible.builtin.ping": {},
