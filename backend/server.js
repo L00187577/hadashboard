@@ -559,7 +559,7 @@ function buildreplPlaybookYAML(data) {
         {
           name: 'Wait 20 seconds',
           'ansible.builtin.pause': {
-            seconds: 20,
+            seconds: 50,
         },
         },
         {
