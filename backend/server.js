@@ -624,6 +624,14 @@ function buildreplPlaybookYAML(data) {
           },
         },
         {
+          name: 'stop replica (clean state)',
+          'community.mysql.mysql_replication': {
+            mode: q('stopreplica'),
+            login_user: q('{{ replica_root_user }}'),
+            login_password: q('{{ replica_root_password }}'),
+          },
+        },
+        {
           name: 'Configure replication with AUTO_POSITION (GTID)',
           'community.mysql.mysql_replication': {
             mode: q('changeprimary'),
