@@ -219,6 +219,8 @@ app.post('/api/replica', async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'Internal server error' });
   }
+
+  console.log(`after db`);
    const yamlText = buildreplPlaybookYAML({
       
       new_vm_name,
@@ -233,7 +235,11 @@ app.post('/api/replica', async (req, res) => {
       
     });
 
+    console.log(`after build yaml`);
+
     const { publicUrl, filename } = savePlaybookYAML(new_vm_name, yamlText);
+
+    console.log(`after save yaml`);
 });
 
 
