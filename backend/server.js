@@ -547,6 +547,24 @@ function buildreplPlaybookYAML(data) {
             ansible_python_interpreter: '/usr/bin/python3',
           },
         },
+        {
+          name: 'testsshprimary',
+          wait_for: {
+            host: q('mysqlp'),
+            port: 22,
+            timeout: 300,
+            state: started,
+          },
+        },
+        {
+          name: 'testsshprimary',
+          wait_for: {
+            host: q('mysqlr'),
+            port: 22,
+            timeout: 300,
+            state: started,
+          },
+        },
       ],
     },
 
