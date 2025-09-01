@@ -617,8 +617,16 @@ function buildreplPlaybookYAML(data) {
         replication_password: q('hahaha'),
         replica_root_user: q('root'),
         replica_root_password: q('hehehe'),
+        filename: q('/var/lib/mysql/auto.cnf')
       },
       tasks: [
+        {
+          name: "Remove a specific file",
+          "ansible.builtin.file": {
+            path: filename,
+            state: "absent",
+          },
+        },
         {
           name: 'Ensure replica MySQL config for GTID/binlog/relay/read-only',
           'ansible.builtin.blockinfile': {
