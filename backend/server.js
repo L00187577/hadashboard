@@ -623,7 +623,7 @@ function buildreplPlaybookYAML(data) {
         {
           name: "Remove a specific file",
           "ansible.builtin.file": {
-            path: filename,
+            path: q('{{filename}}'),
             state: "absent",
           },
         },
