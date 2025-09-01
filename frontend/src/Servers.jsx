@@ -154,7 +154,7 @@ const submitReplica = async (e) => {
       app: "ansible",
     };
 
-    const result = await api.addreplsem(payload); // waits for 200 OK
+    const result = await api.addserversem(payload); // waits for 200 OK
 
     // 3) Decide what to do based on finalTask
     if (result?.finalTask?.status === "success") {
