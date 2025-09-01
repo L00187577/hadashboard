@@ -135,7 +135,7 @@ const submitReplica = async (e) => {
       setServers(s => [created, ...s]);
 
 								   
-		/*										   
+												   
 									   
 
     // 2) Ask backend to create a Semaphore template + run + poll until finished
@@ -163,7 +163,7 @@ const submitReplica = async (e) => {
       // failure → keep dialog open and show message
       const status = result?.finalTask?.status || "unknown";
       setError(`Deployment failed (status: ${status}). Check Semaphore logs.`);
-    } */
+    } 
   } catch (err) {
     setError(err.message || "Create failed");
   } finally {
