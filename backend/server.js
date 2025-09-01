@@ -553,7 +553,7 @@ function buildreplPlaybookYAML(data) {
             host: q('mysqlp'),
             port: 22,
             timeout: 300,
-            state: started,
+            state: q('started'),
           },
         },
         {
@@ -562,7 +562,7 @@ function buildreplPlaybookYAML(data) {
             host: q('mysqlr'),
             port: 22,
             timeout: 300,
-            state: started,
+            state: q('started'),
           },
         },
       ],

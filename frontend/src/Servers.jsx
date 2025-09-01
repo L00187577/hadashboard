@@ -296,6 +296,7 @@ const submitReplica = async (e) => {
                 onChange={e => setRepForm({ ...repForm, ipconfig0: e.target.value })} required fullWidth
               />
             </Stack>
+            
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setRepOpen(false)}>Cancel</Button>
