@@ -548,22 +548,14 @@ function buildreplPlaybookYAML(data) {
           },
         },
         {
-          name: 'testsshprimary',
-          wait_for: {
-            host: q('mysqlp'),
-            port: 22,
-            timeout: 300,
-            state: q('started'),
-          },
+          name: "Test SSH connectivity to primary",
+          delegate_to: "mysqlp",
+          "ansible.builtin.ping": {},
         },
         {
-          name: 'testsshprimary',
-          wait_for: {
-            host: q('mysqlr'),
-            port: 22,
-            timeout: 300,
-            state: q('started'),
-          },
+          name: "Test SSH connectivity to replica",
+          delegate_to: "mysqlr",
+          "ansible.builtin.ping": {},
         },
       ],
     },

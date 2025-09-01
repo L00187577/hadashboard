@@ -12,6 +12,8 @@ export default function Servers() {
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
+  const [repLaunching, setRepLaunching] = useState(false);
+
 
   // Create Server modal
   const [open, setOpen] = useState(false);
@@ -125,7 +127,7 @@ const submitReplica = async (e) => {
     e.preventDefault();
     setRepError("");
     setRepCreating(true);
-  setLaunching(true);					 
+    setRepLaunching(true);			 
 
     try {
 																				  
@@ -167,8 +169,8 @@ const submitReplica = async (e) => {
   } catch (err) {
     setError(err.message || "Create failed");
   } finally {
-    setCreating(false);
-    setLaunching(false);
+    setRepCreating(false);
+    setRepLaunching(false);
   }
 };
 
@@ -273,39 +275,45 @@ const submitReplica = async (e) => {
 
       {/* Add Replica */}
       <Dialog open={repOpen} onClose={() => setRepOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Replica {parent ? `for ${parent.new_vm_name}` : ""}</DialogTitle>
-        <form onSubmit={submitReplica}>
-          <DialogContent>
-            <Stack spacing={2}>
-              {repError && <Alert severity="error">{repError}</Alert>}
-              <TextField label="new_vm_name" value={repForm.new_vm_name}
-                onChange={e => setRepForm({ ...repForm, new_vm_name: e.target.value })} required fullWidth />
-              <TextField label="vm_memory (MiB)" type="number" value={repForm.vm_memory}
-                onChange={e => setRepForm({ ...repForm, vm_memory: e.target.value })} required fullWidth />
-              <TextField label="vm_cores" type="number" value={repForm.vm_cores}
-                onChange={e => setRepForm({ ...repForm, vm_cores: e.target.value })} required fullWidth />
-              <TextField label="ci_user" value={repForm.ci_user}
-                onChange={e => setRepForm({ ...repForm, ci_user: e.target.value })} required fullWidth />
-              <TextField label="ci_password" type="password" value={repForm.ci_password}
-                onChange={e => setRepForm({ ...repForm, ci_password: e.target.value })} required fullWidth />
-              <TextField label="mysql_password" type="password" value={repForm.mysql_password}
-                onChange={e => setRepForm({ ...repForm, mysql_password: e.target.value })} required fullWidth />
-              <TextField
-                label="ipconfig0 (ip=192.168.0.39/24,gw=192.168.0.1)"
-                value={repForm.ipconfig0}
-                onChange={e => setRepForm({ ...repForm, ipconfig0: e.target.value })} required fullWidth
-              />
-            </Stack>
-            
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setRepOpen(false)}>Cancel</Button>
-            <Button type="submit" variant="contained" disabled={repCreating}>
-              {repCreating ? "Creating…" : "Create Replica"}
-            </Button>
-          </DialogActions>
-        </form>
-      </Dialog>
+  <DialogTitle>Add Replica {parent ? `for ${parent.new_vm_name}` : ""}</DialogTitle>
+  <form onSubmit={submitReplica}>
+    <DialogContent>
+      <Stack spacing={2}>
+        {repError && <Alert severity="error">{repError}</Alert>}
+        <TextField label="new_vm_name" value={repForm.new_vm_name}
+          onChange={e => setRepForm({ ...repForm, new_vm_name: e.target.value })} required fullWidth />
+        <TextField label="vm_memory (MiB)" type="number" value={repForm.vm_memory}
+          onChange={e => setRepForm({ ...repForm, vm_memory: e.target.value })} required fullWidth />
+        <TextField label="vm_cores" type="number" value={repForm.vm_cores}
+          onChange={e => setRepForm({ ...repForm, vm_cores: e.target.value })} required fullWidth />
+        <TextField label="ci_user" value={repForm.ci_user}
+          onChange={e => setRepForm({ ...repForm, ci_user: e.target.value })} required fullWidth />
+        <TextField label="ci_password" type="password" value={repForm.ci_password}
+          onChange={e => setRepForm({ ...repForm, ci_password: e.target.value })} required fullWidth />
+        <TextField label="mysql_password" type="password" value={repForm.mysql_password}
+          onChange={e => setRepForm({ ...repForm, mysql_password: e.target.value })} required fullWidth />
+        <TextField
+          label="ipconfig0 (ip=192.168.0.39/24,gw=192.168.0.1)"
+          value={repForm.ipconfig0}
+          onChange={e => setRepForm({ ...repForm, ipconfig0: e.target.value })} required fullWidth
+        />
+      </Stack>
+
+      {repLaunching && (
+        <Box display="flex" alignItems="center" mt={2}>
+          <CircularProgress size={28} />
+          <Typography ml={2}>Creating replica… please wait</Typography>
+        </Box>
+      )}
+    </DialogContent>
+    <DialogActions>
+      <Button onClick={() => setRepOpen(false)}>Cancel</Button>
+      <Button type="submit" variant="contained" disabled={repCreating}>
+        {repCreating ? "Creating…" : "Create Replica"}
+      </Button>
+    </DialogActions>
+  </form>
+</Dialog>
     </Box>
   );
 }
