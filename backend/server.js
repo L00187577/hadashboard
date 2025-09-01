@@ -551,11 +551,19 @@ function buildreplPlaybookYAML(data) {
           name: "Test SSH connectivity to primary",
           delegate_to: "mysqlp",
           "ansible.builtin.ping": {},
+          register: "ping_primary",
+          retries: 5,         // number of attempts
+          delay: 5,           // seconds between attempts
+          until: "ping_primary is succeeded"
         },
         {
           name: "Test SSH connectivity to replica",
           delegate_to: "mysqlr",
           "ansible.builtin.ping": {},
+          register: "ping_secondary",
+          retries: 5,         // number of attempts
+          delay: 5,           // seconds between attempts
+          until: "ping_secondary is succeeded"
         },
       ],
     },
