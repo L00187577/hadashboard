@@ -354,7 +354,7 @@ function buildProxmoxPlaybookYAML(data) {
       hosts: 'localhost',
       gather_facts: false,
       vars: {
-        template_name: new YAML.Scalar('mysql2', { type: YAML.Scalar.QUOTE_DOUBLE }),
+        template_name: new YAML.Scalar('mysqla', { type: YAML.Scalar.QUOTE_DOUBLE }),
         new_vm_name: new YAML.Scalar(data.new_vm_name, { type: YAML.Scalar.QUOTE_DOUBLE }),
         vm_memory: Number(data.vm_memory),
         vm_cores: Number(data.vm_cores),
