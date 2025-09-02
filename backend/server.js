@@ -88,8 +88,16 @@ const groupSchema = Joi.object({
   proxy_ip: Joi.string().trim().required(),       // ip or hostname
 });
 
-const parseIp = (ipconfig0) =>
-  String(ipconfig0).split(',')[0].split('=')[1].split('/')[0];
+function parseIp(ipcfg) {
+  if (!ipcfg) return '';
+  try {
+    const first = String(ipcfg).split(',')[0];         // "ip=1.2.3.4/24"
+    const rhs = first.split('=')[1];                   // "1.2.3.4/24"
+    return rhs.split('/')[0].trim();                   // "1.2.3.4"
+  } catch {
+    return '';
+  }
+}
 
 /* ========= Routes ========= */
 
@@ -754,75 +762,386 @@ app.get('/api/groups', async (_req, res) => {
 });
 
 app.post('/api/groups/:id', async (req, res) => {
+  // 1) Validate body (expects { lb_algorithm, proxy_ip })
   const { error, value } = groupSchema.validate(req.body);
   if (error) return res.status(400).json({ error: error.details[0].message });
 
   const masterId = req.params.id;
 
-  const [masters] = await pool.query(
-    'SELECT id, new_vm_name, ipconfig0, is_master, provider FROM servers WHERE id=?',
-    [masterId]
-  );
-  if (masters.length === 0) return res.status(404).json({ error: 'Master not found' });
-
-  const master = masters[0];
-  const masterName =
-    master.is_master && master.is_master.toLowerCase() !== 'master'
-      ? master.is_master
-      : master.new_vm_name;
-
-  const [replicas] = await pool.query(
-    'SELECT id, new_vm_name, ipconfig0 FROM servers WHERE is_master=? AND new_vm_name<>? ORDER BY id DESC LIMIT 1',
-    [masterName, master.new_vm_name]
-  );
-  if (replicas.length === 0) return res.status(400).json({ error: 'No replica found for this master' });
-
-  const replica = replicas[0];
-
-  const masterip = parseIp(master.ipconfig0);
-  const slaveip  = parseIp(replica.ipconfig0);
-  const proxyIp  = value.proxy_ip.trim();
-  const lbAlgo   = value.lb_algorithm.trim();
-
-  const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
-  const hashedCi = await bcrypt.hash('hehe', saltRounds);
-  const hashedDb = await bcrypt.hash('hehe', saltRounds);
-
-  const groupName = `${masterName}-proxy`;
-  const ipcfg = `ip=${proxyIp}/24,gw=192.168.0.1`;
-
-  const sql = `
-    INSERT INTO servers
-      (new_vm_name, vm_memory, vm_cores, ci_user, ci_password, mysql_password, ipconfig0, is_master, provider)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
-  const params = [
-    groupName,
-    2048,
-    2,
-    'jery',
-    hashedCi,
-    hashedDb,
-    ipcfg,
-    masterName,
-    'proxmox'
-  ];
-
-  let inserted;
   try {
-    const [result] = await pool.execute(sql, params);
-    const [rows] = await pool.query(
-      'SELECT id, new_vm_name, vm_memory, vm_cores, ci_user, ipconfig0, is_master, provider, created_at FROM servers WHERE id=?',
-      [result.insertId]
+    // 2) Fetch master
+    const [masters] = await pool.query(
+      'SELECT id, new_vm_name, ipconfig0, is_master, provider FROM servers WHERE id = ?',
+      [masterId]
     );
-    inserted = rows[0];
-  } catch (e) {
-    if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Group name already exists' });
-    console.error(e);
-    return res.status(500).json({ error: 'Insert failed' });
-  }
+    if (masters.length === 0) {
+      return res.status(404).json({ error: 'Master not found' });
+    }
 
+    const master = masters[0];
+    const masterName =
+      master.is_master && master.is_master.toLowerCase() !== 'master'
+        ? master.is_master
+        : master.new_vm_name;
+
+    // 3) Find one replica under this master (most recent)
+    const [replicas] = await pool.query(
+      'SELECT id, new_vm_name, ipconfig0 FROM servers WHERE is_master = ? AND new_vm_name <> ? ORDER BY id DESC LIMIT 1',
+      [masterName, master.new_vm_name]
+    );
+    if (replicas.length === 0) {
+      return res.status(400).json({ error: 'No replica found for this master' });
+    }
+
+    const replica = replicas[0];
+
+    // 4) Clean IPs + requested proxy IP
+    const masterip = parseIp(master.ipconfig0);
+    const replip  = parseIp(replica.ipconfig0);
+    const proxyIp = value.proxy_ip.trim();
+    const lbAlgo  = value.lb_algorithm.trim();
+
+    // 5) Define defaults for the ProxySQL VM (tweak via env if you like)
+    const proxyName   = `${masterName}-proxy`;
+    const proxyMem    = parseInt(process.env.PROXY_VM_MEM || '2048', 10);
+    const proxyCores  = parseInt(process.env.PROXY_VM_CORES || '2', 10);
+    const proxyUser   = process.env.PROXY_CI_USER || 'jery';
+    const proxyPass   = process.env.PROXY_CI_PASS || 'hehehe';
+    const defaultGw   = process.env.DEFAULT_GW || '192.168.0.1';
+    const proxyIPCfg  = `ip=${proxyIp}/24,gw=${defaultGw}`;
+    const provider    = master.provider || 'proxmox';
+
+    // 6) Hash secrets for DB storage (like your replica API)
+    const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
+    const hashedCi   = await bcrypt.hash(proxyPass, saltRounds);
+    const hashedDb   = await bcrypt.hash('dummy-db-pass', saltRounds); // not used by ProxySQL; keep column consistent
+
+    // 7) Insert the Proxy “server” row
+    const insertSql = `
+      INSERT INTO servers
+        (new_vm_name, vm_memory, vm_cores, ci_user, ci_password, mysql_password, ipconfig0, is_master, provider)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    const insertParams = [
+      proxyName, proxyMem, proxyCores,
+      proxyUser, hashedCi, hashedDb,
+      proxyIPCfg, masterName, provider
+    ];
+    const [insertResult] = await pool.execute(insertSql, insertParams);
+
+    // 8) Build ProxySQL playbook YAML (provision VM + configure ProxySQL)
+    //    Expect your builder to accept at least these fields:
+    //    new_vm_name, vm_memory, vm_cores, ci_user, ci_password, ipconfig0,
+    //    masterip, replip, lb_algorithm
+    const yamlText = buildproxyPlaybookYAML({
+      new_vm_name: proxyName,
+      vm_memory: proxyMem,
+      vm_cores: proxyCores,
+      ci_user: proxyUser,
+      ci_password: proxyPass,          // plaintext for cloud-init
+      ipconfig0: proxyIPCfg,
+      masterip,
+      replip,
+      proxyIp,
+      
+    });
+
+    // 9) Save playbook to disk and get a public link
+    const { publicUrl, filename } = savePlaybookYAML(proxyName, yamlText);
+
+    // 10) Return the created row + playbook info
+    const [rows] = await pool.query(
+      `SELECT id, new_vm_name, vm_memory, vm_cores, ci_user, ipconfig0, is_master, provider, created_at
+       FROM servers WHERE id = ?`,
+      [insertResult.insertId]
+    );
+
+    return res.status(201).json({
+      ...rows[0],
+      playbook_url: publicUrl,
+      playbook_path: filename
+    });
+
+  } catch (e) {
+    if (e.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'Server name must be unique' });
+    }
+    console.error('Group create error:', e);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 });
+
+function buildproxyPlaybookYAML({
+  new_vm_name,
+  vm_memory,
+  vm_cores,
+  ci_user,
+  ci_password,
+  ipconfig0,
+  masterip,
+  replip,
+  proxyIp,
+}) {
+  return `---
+# proxysql-readwrite.yml
+# Split writes to master (HG 10) and reads to replicas (HG 20)
+
+- name: Add PRIMARY and REPLICA to in-memory inventory
+  hosts: localhost
+  gather_facts: false
+  vars:
+    template_name: proxysql
+    new_vm_name: ${new_vm_name}
+    vm_memory: ${Number(vm_memory)}
+    vm_cores: ${Number(vm_cores)}
+  tasks:
+    - name: Clone VM from template
+      community.general.proxmox_kvm:
+        api_user: "{{ lookup('env', 'PROXMOX_API_USER') }}"
+        api_token_secret: "{{ lookup('env', 'PROXMOX_API_TOKEN') }}"
+        api_token_id: "{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}"
+        api_host: "{{ lookup('env', 'PROXMOX_API_URL') }}"
+        node: pve
+        clone: "{{ template_name }}"
+        name: "{{ new_vm_name }}"
+        cores: "{{ vm_cores }}"
+        memory: "{{ vm_memory }}"
+        state: present
+        timeout: 300
+    - name: Set Cloud-Init network config
+      community.general.proxmox_kvm:
+        api_user: "{{ lookup('env', 'PROXMOX_API_USER') }}"
+        api_token_secret: "{{ lookup('env', 'PROXMOX_API_TOKEN') }}"
+        api_token_id: "{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}"
+        api_host: "{{ lookup('env', 'PROXMOX_API_URL') }}"
+        node: pve
+        name: "{{ new_vm_name }}"
+        cores: "{{ vm_cores }}"
+        memory: "{{ vm_memory }}"
+        ciuser: ${ci_user}
+        cipassword: ${ci_password}
+        ipconfig:
+          ipconfig0: ${ipconfig0}
+        update: true
+        update_unsafe: true
+        state: present
+    - name: Start the new VM
+      community.general.proxmox_kvm:
+        api_user: "{{ lookup('env', 'PROXMOX_API_USER') }}"
+        api_token_secret: "{{ lookup('env', 'PROXMOX_API_TOKEN') }}"
+        api_token_id: "{{ lookup('env', 'PROXMOX_API_TOKEN_ID') }}"
+        api_host: "{{ lookup('env', 'PROXMOX_API_URL') }}"
+        node: pve
+        name: "{{ new_vm_name }}"
+        state: started
+
+    - name: Add the primary to the in-memory inventory
+      add_host:
+        name: "mysql1"
+        ansible_host: ${masterip}
+        ansible_user: "jery"
+        ansible_password: "hehehe"
+        ansible_python_interpreter: /usr/bin/python3
+        groups: "primary"
+
+    - name: Add the replica to the in-memory inventory
+      add_host:
+        name: "mysql2"
+        ansible_host: ${replip}
+        ansible_user: "jery"
+        ansible_password: "hehehe"
+        ansible_python_interpreter: /usr/bin/python3
+        groups: "replicas"
+
+    - name: Add the proxysql host to the in-memory inventory
+      add_host:
+        name: "proxysql"
+        ansible_host: ${proxyIp}
+        ansible_user: "jery"
+        ansible_password: "hehehe"
+        ansible_python_interpreter: /usr/bin/python3
+
+- name: Ensure app/monitor users exist on MySQL backends
+  hosts: primary:replicas
+  become: yes
+  vars:
+    db_root_user: root
+    db_root_password: "hehehe"
+    app_user: "appuser"
+    app_password: "huhuhu"
+    monitor_user: "monuser"
+    monitor_password: "hihihi"
+  collections:
+    - community.mysql
+  tasks:
+    - name: Ensure app user exists with needed grants
+      mysql_user:
+        name: "{{ app_user }}"
+        password: "{{ app_password }}"
+        host: '%'
+        priv: "*.*:SELECT,INSERT,UPDATE,DELETE,CREATE,DROP,ALTER,INDEX,LOCK TABLES,EXECUTE"
+        state: present
+        login_user: "{{ db_root_user }}"
+        login_password: "{{ db_root_password }}"
+
+    - name: Ensure monitor user exists (minimal perms)
+      mysql_user:
+        name: "{{ monitor_user }}"
+        password: "{{ monitor_password }}"
+        host: '%'
+        priv: "*.*:USAGE"
+        state: present
+        login_user: "{{ db_root_user }}"
+        login_password: "{{ db_root_password }}"
+
+- name: Install and configure ProxySQL for read/write split
+  hosts: proxysql
+  become: yes
+  vars:
+    writer_hg: 10
+    reader_hg: 20
+
+    proxysql_admin_user: admin
+    proxysql_admin_pass: "admin"
+    proxysql_admin_port: 6032
+
+    proxysql_mysql_listen_port: 6033
+
+    monitor_user: "monuser"
+    monitor_password: "hihihi"
+
+    app_user: "appuser"
+    app_password: "huhuhu"
+
+    max_replication_lag: 30
+  collections:
+    - community.mysql
+  tasks:
+    - name: Install ProxySQL (Debian/Ubuntu)
+      apt:
+        name: proxysql
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Ensure ProxySQL is started and enabled
+      service:
+        name: proxysql
+        state: started
+        enabled: yes
+
+    - name: Wait for ProxySQL admin port
+      wait_for:
+        host: 127.0.0.1
+        port: "{{ proxysql_admin_port }}"
+        timeout: 60
+
+    - name: Set ProxySQL global variables (monitor + listener)
+      community.proxysql.proxysql_global_variables:
+        login_user: "{{ proxysql_admin_user }}"
+        login_password: "{{ proxysql_admin_pass }}"
+        login_host: "127.0.0.1"
+        login_port: "{{ proxysql_admin_port | default(6032) }}"
+        variable: "{{ item.key }}"
+        value: "{{ item.value }}"
+        load_to_runtime: true
+        save_to_disk: true
+      loop:
+        - { key: "mysql-monitor_username",           value: "{{ monitor_user }}" }
+        - { key: "mysql-monitor_password",           value: "{{ monitor_password }}" }
+        - { key: "mysql-monitor_connect_interval",   value: 2000 }
+        - { key: "mysql-monitor_read_only_interval", value: 2000 }
+        - { key: "mysql-default_query_delay",        value: 0 }
+        - { key: "mysql-default_query_timeout",      value: 3600000 }
+        - { key: "mysql-threads",                    value: 4 }
+        - { key: "mysql-max_connections",            value: 4096 }
+        - { key: "mysql-interfaces",                 value: "0.0.0.0:6033;/tmp/proxysql.sock" }
+        - { key: "mysql-have_ssl",                   value: 0 }
+
+    - name: Register MASTER in writer hostgroup
+      community.proxysql.proxysql_backend_servers:
+        login_user: "{{ proxysql_admin_user }}"
+        login_password: "{{ proxysql_admin_pass }}"
+        login_host: "127.0.0.1"
+        login_port: "{{ proxysql_admin_port | default(6032) }}"
+        hostgroup_id: "{{ writer_hg }}"
+        hostname: "{{ hostvars[item].ansible_host | default(item) }}"
+        port: 3306
+        weight: 1000
+        max_replication_lag: "{{ max_replication_lag | default(60) }}"
+        state: present
+        load_to_runtime: true
+        save_to_disk: true
+      loop: "{{ groups['primary'] | default([]) }}"
+      when: groups['primary'] is defined and (groups['primary'] | length) > 0
+
+    - name: Register REPLICAS in reader hostgroup
+      community.proxysql.proxysql_backend_servers:
+        login_user: "{{ proxysql_admin_user }}"
+        login_password: "{{ proxysql_admin_pass }}"
+        login_host: "127.0.0.1"
+        login_port: "{{ proxysql_admin_port | default(6032) }}"
+        hostgroup_id: "{{ reader_hg }}"
+        hostname: "{{ hostvars[item].ansible_host | default(item) }}"
+        port: 3306
+        weight: 1000
+        max_replication_lag: "{{ max_replication_lag | default(60) }}"
+        state: present
+        load_to_runtime: true
+        save_to_disk: true
+      loop: "{{ groups['replicas'] | default([]) }}"
+
+    - name: Add application user to ProxySQL (routes via HGs)
+      community.proxysql.proxysql_mysql_users:
+        login_user: "{{ proxysql_admin_user }}"
+        login_password: "{{ proxysql_admin_pass }}"
+        login_host: "127.0.0.1"
+        login_port: "{{ proxysql_admin_port | default(6032) }}"
+        username: "{{ app_user }}"
+        password: "{{ app_password }}"
+        default_hostgroup: "{{ writer_hg }}"
+        transaction_persistent: 1
+        fast_forward: 0
+        active: 1
+        state: present
+        load_to_runtime: true
+        save_to_disk: true
+
+    - name: Ensure ProxySQL query rules (writer/reader split)
+      community.proxysql.proxysql_query_rules:
+        login_user: "{{ proxysql_admin_user }}"
+        login_password: "{{ proxysql_admin_pass }}"
+        login_host: "127.0.0.1"
+        login_port: "{{ proxysql_admin_port | default(6032) }}"
+        rule_id: "{{ item.rule_id }}"
+        match_pattern: "{{ item.match_pattern }}"
+        destination_hostgroup: "{{ item.destination_hostgroup }}"
+        active: 1
+        apply: 1
+        log: 1
+        state: present
+        load_to_runtime: true
+        save_to_disk: true
+      loop:
+        - { rule_id: 50,  match_pattern: '(?i)^\\s*(CREATE|ALTER|DROP|TRUNCATE|RENAME|GRANT|REVOKE|SET)\\b', destination_hostgroup: "{{ writer_hg }}" }
+        - { rule_id: 60,  match_pattern: '(?i)^\\s*(INSERT|UPDATE|DELETE|REPLACE)\\b', destination_hostgroup: "{{ writer_hg }}" }
+        - { rule_id: 70,  match_pattern: '(?i)^\\s*(BEGIN|START\\s+TRANSACTION|COMMIT|ROLLBACK)\\b', destination_hostgroup: "{{ writer_hg }}" }
+        - { rule_id: 100, match_pattern: '(?i)^\\s*SELECT\\b.*FOR\\s+UPDATE', destination_hostgroup: "{{ writer_hg }}" }
+        - { rule_id: 110, match_pattern: '(?i)^\\s*SELECT\\b.*LOCK\\s+IN\\s+SHARE\\s+MODE', destination_hostgroup: "{{ writer_hg }}" }
+        - { rule_id: 200, match_pattern: '(?i)^\\s*SELECT\\b', destination_hostgroup: "{{ reader_hg }}" }
+
+    - name: Show backends at runtime
+      command: >
+        mysql -u{{ proxysql_admin_user }} -p{{ proxysql_admin_pass }}
+        -h 127.0.0.1 -P {{ proxysql_admin_port }}
+        -e "SELECT hostgroup_id,hostname,port,status,weight,comment FROM mysql_servers ORDER BY hostgroup_id,hostname"
+      register: servers_out
+      changed_when: false
+
+    - debug:
+        var: servers_out.stdout_lines
+`;
+}
+
 
 /* ========= Start ========= */
 const port = process.env.PORT || 3001;
