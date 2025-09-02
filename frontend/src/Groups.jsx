@@ -58,11 +58,12 @@ export default function Groups() {
       const v = validate(form); if (v) throw new Error(v);
 
       // Backend expects: { server_id, lb_algorithm, proxy_ip }
-      await api.createGroup({
-        server_id: parent.id,
-        lb_algorithm: form.lb_algorithm,
-        proxy_ip: form.proxy_ip.trim(),
-      });
+      await api.createGroup(parent.id,
+  {
+    lb_algorithm: form.lb_algorithm,
+    proxy_ip: form.proxy_ip.trim(),
+  }
+      );
 
       setGrpOpen(false);
       setParent(null);
