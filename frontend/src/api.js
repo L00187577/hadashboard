@@ -8,6 +8,9 @@ export const api = {
   createReplica: (id, payload) =>
     fetch(`${BASE}/api/replica/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(r => { if (!r.ok) throw new Error(`Replica failed ${r.status}`); return r.json(); }),
+  createGroup: (id, payload) =>
+    fetch(`${BASE}/api/groups/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      .then(r => { if (!r.ok) throw new Error(`group failed ${r.status}`); return r.json(); }),    
   listCreds: () => fetch(`${BASE}/api/proxmox_creds`).then(r => r.json()),
   addCred: (payload) =>
     fetch(`${BASE}/api/proxmox_creds`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })

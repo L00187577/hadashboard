@@ -160,7 +160,7 @@ const submitReplica = async (e) => {
     if (result?.finalTask?.status === "success") {
       // success → close dialog and reset form
       setRepForm(replProxmox);
-      setOpen(false);
+      setRepOpen(false);
     } else {
       // failure → keep dialog open and show message
       const status = result?.finalTask?.status || "unknown";

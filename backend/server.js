@@ -83,6 +83,14 @@ const replicaSchema = Joi.object({
   provider: Joi.string().valid('proxmox','azure').optional(),
 });
 
+const groupSchema = Joi.object({
+  lb_algorithm: Joi.string().trim().required(),   // e.g. "round_robin"
+  proxy_ip: Joi.string().trim().required(),       // ip or hostname
+});
+
+const parseIp = (ipconfig0) =>
+  String(ipconfig0).split(',')[0].split('=')[1].split('/')[0];
+
 /* ========= Routes ========= */
 
 /** Proxmox Credentials */
@@ -447,7 +455,7 @@ function buildreplPlaybookYAML(data) {
       hosts: 'localhost',
       gather_facts: false,
       vars: {
-        template_name: q('mysqlb'),
+        template_name: q('mysql-repl'),
         new_vm_name: q(data.new_vm_name),
         vm_memory: Number(data.vm_memory),
         vm_cores: Number(data.vm_cores),
@@ -745,22 +753,75 @@ app.get('/api/groups', async (_req, res) => {
   }
 });
 
-app.post('/api/groups', async (req, res) => {
-  const { server_id, lb_algorithm, proxy_ip } = req.body || {};
-  if (!server_id || !lb_algorithm || !proxy_ip) {
-    return res.status(400).json({ error: "server_id, lb_algorithm, proxy_ip required" });
-  }
+app.post('/api/groups/:id', async (req, res) => {
+  const { error, value } = groupSchema.validate(req.body);
+  if (error) return res.status(400).json({ error: error.details[0].message });
+
+  const masterId = req.params.id;
+
+  const [masters] = await pool.query(
+    'SELECT id, new_vm_name, ipconfig0, is_master, provider FROM servers WHERE id=?',
+    [masterId]
+  );
+  if (masters.length === 0) return res.status(404).json({ error: 'Master not found' });
+
+  const master = masters[0];
+  const masterName =
+    master.is_master && master.is_master.toLowerCase() !== 'master'
+      ? master.is_master
+      : master.new_vm_name;
+
+  const [replicas] = await pool.query(
+    'SELECT id, new_vm_name, ipconfig0 FROM servers WHERE is_master=? AND new_vm_name<>? ORDER BY id DESC LIMIT 1',
+    [masterName, master.new_vm_name]
+  );
+  if (replicas.length === 0) return res.status(400).json({ error: 'No replica found for this master' });
+
+  const replica = replicas[0];
+
+  const masterip = parseIp(master.ipconfig0);
+  const slaveip  = parseIp(replica.ipconfig0);
+  const proxyIp  = value.proxy_ip.trim();
+  const lbAlgo   = value.lb_algorithm.trim();
+
+  const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
+  const hashedCi = await bcrypt.hash('hehe', saltRounds);
+  const hashedDb = await bcrypt.hash('hehe', saltRounds);
+
+  const groupName = `${masterName}-proxy`;
+  const ipcfg = `ip=${proxyIp}/24,gw=192.168.0.1`;
+
+  const sql = `
+    INSERT INTO servers
+      (new_vm_name, vm_memory, vm_cores, ci_user, ci_password, mysql_password, ipconfig0, is_master, provider)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+  const params = [
+    groupName,
+    2048,
+    2,
+    'jery',
+    hashedCi,
+    hashedDb,
+    ipcfg,
+    masterName,
+    'proxmox'
+  ];
+
+  let inserted;
   try {
-    const [r] = await pool.execute(
-      "INSERT INTO groups (server_id, lb_algorithm, proxy_ip) VALUES (?, ?, ?)",
-      [server_id, lb_algorithm, proxy_ip]
+    const [result] = await pool.execute(sql, params);
+    const [rows] = await pool.query(
+      'SELECT id, new_vm_name, vm_memory, vm_cores, ci_user, ipconfig0, is_master, provider, created_at FROM servers WHERE id=?',
+      [result.insertId]
     );
-    const [row] = await pool.execute("SELECT * FROM groups WHERE id = ?", [r.insertId]);
-    res.status(201).json(row[0]);
+    inserted = rows[0];
   } catch (e) {
+    if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Group name already exists' });
     console.error(e);
-    res.status(500).json({ error: "Internal error" });
+    return res.status(500).json({ error: 'Insert failed' });
   }
+
 });
 
 /* ========= Start ========= */
