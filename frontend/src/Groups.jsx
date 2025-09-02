@@ -71,9 +71,7 @@ export default function Groups() {
     const templateName =
       created?.new_vm_name || `${(parent.is_master && parent.is_master.toLowerCase() !== 'master') ? parent.is_master : parent.new_vm_name}-proxy`;
 
-    const playbookPath =
-      created?.playbook_path ||
-      `/root/jery/new/ha-platform-full/backend/generated/playbooks/${templateName}.yml`;
+    const playbookPath = `/root/jery/new/ha-platform-full/backend/generated/playbooks/${templateName}.yml`;
 
     const payload = {
       project_id: 1,
