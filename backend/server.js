@@ -961,6 +961,10 @@ function buildproxyPlaybookYAML({
         ansible_password: "hehehe"
         ansible_python_interpreter: /usr/bin/python3
 
+    - name: Wait 20 seconds
+      ansible.builtin.pause:
+        seconds: 50
+        
 - name: Ensure app/monitor users exist on MySQL backends
   hosts: primary:replicas
   become: yes
